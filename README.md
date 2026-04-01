@@ -1,6 +1,36 @@
 # Adaptive AI Route Optimization for Dynamic Urban Logistics
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com)
+[![Vercel Deploy](https://vercel.com/button)](https://vercel.com)
+
 A production-ready hybrid routing system combining AI-based route optimization with real-time human (rider) feedback to improve delivery efficiency in dynamic urban environments like Erbil and Baghdad.
+
+## 🚀 Live Demo
+
+| Service | Status | Link |
+|---------|--------|------|
+| API Docs | 🔄 Coming Soon | `https://your-app.render.com/docs` |
+| Frontend | 🔄 Coming Soon | `https://your-app.vercel.app` |
+| Health | 🔄 Coming Soon | `https://your-app.render.com/api/v1/health` |
+
+### Quick Deploy (Free)
+
+**Backend → Render:**
+1. Go to https://render.com → Create Web Service
+2. Connect GitHub: `logeshkannan19/Adaptive-route-intelligence`
+3. Build: `pip install -r backend/requirements.txt`
+4. Start: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+5. Env Vars: `DATABASE_URL=sqlite:///./urban_routes.db`, `JWT_SECRET=your-secret`
+
+**Frontend → Vercel:**
+1. Go to https://vercel.com → Import project
+2. Output: `frontend/public`
+3. Deploy
+
+After deploy, update API URL in `frontend/public/index.html`:
+```javascript
+const API_URL = 'https://your-backend.onrender.com/api/v1';
+```
 
 ## Core Concept
 
