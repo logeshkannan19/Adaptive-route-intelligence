@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Urban Route Optimizer - Erbil</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+      .app { display: flex; flex-direction: column; height: 100vh; }
+      .header { background: #1a1a2e; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+      .header h1 { font-size: 1.25rem; font-weight: 600; }
+      .header .badge { background: #e94560; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; }
+      .main { display: flex; flex: 1; overflow: hidden; }
+      .sidebar { width: 360px; background: white; border-right: 1px solid #e0e0e0; overflow-y: auto; display: flex; flex-direction: column; }
+      .sidebar-section { padding: 1rem; border-bottom: 1px solid #f0f0f0; }
+      .sidebar-section h3 { font-size: 0.875rem; color: #666; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+      .form-group { margin-bottom: 1rem; }
+      .form-group label { display: block; font-size: 0.875rem; color: #333; margin-bottom: 0.375rem; }
+      .form-group select, .form-group input { width: 100%; padding: 0.625rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.875rem; }
+      .btn { width: 100%; padding: 0.75rem; background: #1a1a2e; color: white; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; transition: background 0.2s; }
+      .btn:hover { background: #16213e; }
+      .btn.secondary { background: #f0f0f0; color: #333; }
+      .btn.secondary:hover { background: #e0e0e0; }
+      .map-container { flex: 1; position: relative; }
+      #map { width: 100%; height: 100%; }
+      .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+      .stat-card { background: #f8f9fa; padding: 0.875rem; border-radius: 8px; }
+      .stat-card .value { font-size: 1.5rem; font-weight: 600; color: #1a1a2e; }
+      .stat-card .label { font-size: 0.75rem; color: #666; }
+      .route-info { background: #f0f7ff; padding: 1rem; border-radius: 8px; margin-top: 1rem; }
+      .route-info .row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+      .route-info .row:last-child { margin-bottom: 0; }
+      .road-list { max-height: 200px; overflow-y: auto; }
+      .road-item { display: flex; justify-content: space-between; align-items: center; padding: 0.625rem; background: #f8f9fa; border-radius: 6px; margin-bottom: 0.5rem; }
+      .road-item .status { width: 8px; height: 8px; border-radius: 50%; }
+      .road-item .status.open { background: #22c55e; }
+      .road-item .status.blocked { background: #ef4444; }
+      .road-item .status.risky { background: #f59e0b; }
+      .road-item .status.flooded { background: #3b82f6; }
+      .tab-nav { display: flex; border-bottom: 1px solid #e0e0e0; }
+      .tab-nav button { flex: 1; padding: 0.75rem; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-size: 0.875rem; color: #666; }
+      .tab-nav button.active { border-bottom-color: #e94560; color: #e94560; }
+      .feedback-form { display: flex; flex-direction: column; gap: 0.75rem; }
+      .feedback-form input, .feedback-form textarea { width: 100%; padding: 0.625rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.875rem; }
+      .feedback-form textarea { resize: vertical; min-height: 60px; }
+      .legend { position: absolute; bottom: 20px; right: 20px; background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 1000; }
+      .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; margin-bottom: 0.375rem; }
+      .legend-item:last-child { margin-bottom: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+      const API_URL = 'http://localhost:8000';
+
+      function App() {
+        const [locations, setLocations] = useState([]);
+        const [roads, setRoads] = useState([]);
+        const [startLoc, setStartLoc] = useState('');
+        const [endLoc, setEndLoc] = useState('');
+        const [aiRoute, setAiRoute] = useState(null);
+        const [actualRoute, setActualRoute] = useState(null);
+        const [analytics, setAnalytics] = useState(null);
+        const [activeTab, setActiveTab] = useState('route');
+        const [feedback, setFeedback] = useState({ riderId: '', actualPath: '', actualTime: '', issues: '' });
+        const mapRef = useRef(null);
+        const mapInstanceRef = useRef(null);
+
+        useEffect(() => {
+          fetchLocations();
+          fetchRoads();
+          fetchAnalytics();
+        }, []);
+
+        useEffect(() => {
+          if (!mapInstanceRef.current && mapRef.current) {
+            mapInstanceRef.current = L.map(mapRef.current).setView([36.1911, 43.9939], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(mapInstanceRef.current);
+          }
+        }, []);
+
+        useEffect(() => {
+          if (locations.length > 0 && roads.length > 0 && mapInstanceRef.current) {
+            renderMap();
+          }
+        }, [locations, roads, aiRoute, actualRoute]);
+
+        const fetchLocations = async () => {
+          try {
+            const res = await fetch(`${API_URL}/locations`);
+            const data = await res.json();
+            setLocations(data);
+          } catch (e) { console.error(e); }
+        };
+
+        const fetchRoads = async () => {
+          try {
+            const res = await fetch(`${API_URL}/roads`);
+            const data = await res.json();
+            setRoads(data);
+          } catch (e) { console.error(e); }
+        };
+
+        const fetchAnalytics = async () => {
+          try {
+            const res = await fetch(`${API_URL}/analytics/summary`);
+            const data = await res.json();
+            setAnalytics(data);
+          } catch (e) { console.error(e); }
+        };
+
+        const generateRoute = async () => {
+          if (!startLoc || !endLoc) return;
+          try {
+            const res = await fetch(`${API_URL}/routes/generate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                start_location_id: parseInt(startLoc),
+                end_location_id: parseInt(endLoc),
+                algorithm: 'dijkstra'
+              })
+            });
+            const data = await res.json();
+            setAiRoute(data);
+            setActualRoute(null);
+          } catch (e) { console.error(e); }
+        };
+
+        const submitFeedback = async () => {
+          if (!feedback.riderId || !aiRoute) return;
+          try {
+            await fetch(`${API_URL}/feedback`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                rider_id: feedback.riderId,
+                ai_route_path: aiRoute.path,
+                actual_route_path: feedback.actualPath.split(',').map(n => parseInt(n.trim())),
+                actual_time_minutes: parseFloat(feedback.actualTime),
+                delay_minutes: parseFloat(feedback.actualTime) - aiRoute.estimated_time_minutes,
+                issues_reported: feedback.issues.split(',').filter(x => x),
+                shortcut_used: feedback.actualPath.length < aiRoute.path.length
+              })
+            });
+            alert('Feedback submitted!');
+            fetchAnalytics();
+          } catch (e) { console.error(e); }
+        };
+
+        const updateRoadStatus = async (roadId, status) => {
+          try {
+            await fetch(`${API_URL}/roads/${roadId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ road_status: status })
+            });
+            fetchRoads();
+          } catch (e) { console.error(e); }
+        };
+
+        const renderMap = () => {
+          const map = mapInstanceRef.current;
+          if (!map) return;
+          
+          map.eachLayer(layer => {
+            if (layer instanceof L.Polyline || layer instanceof L.Marker) {
+              map.removeLayer(layer);
+            }
+          });
+
+          const locationMap = {};
+          locations.forEach(loc => {
+            locationMap[loc.id] = [loc.latitude, loc.longitude];
+            L.marker([loc.latitude, loc.longitude])
+              .bindPopup(`<b>${loc.name}</b><br>ID: ${loc.id}`)
+              .addTo(map);
+          });
+
+          roads.forEach(road => {
+            const src = locationMap[road.source_id];
+            const tgt = locationMap[road.target_id];
+            if (!src || !tgt) return;
+            
+            let color = '#22c55e';
+            if (road.road_status === 'blocked') color = '#ef4444';
+            else if (road.road_status === 'risky') color = '#f59e0b';
+            else if (road.road_status === 'flooded') color = '#3b82f6';
+            
+            L.polyline([src, tgt], { color, weight: 4 }).addTo(map);
+          });
+
+          if (aiRoute && aiRoute.path.length > 1) {
+            const coords = aiRoute.path.map(id => locationMap[id]).filter(Boolean);
+            L.polyline(coords, { color: '#e94560', weight: 6, dashArray: '10, 10' }).addTo(map);
+          }
+
+          if (actualRoute && actualRoute.length > 1) {
+            const coords = actualRoute.map(id => locationMap[id]).filter(Boolean);
+            L.polyline(coords, { color: '#22c55e', weight: 6 }).addTo(map);
+          }
+        };
+
+        const getLocationName = (id) => {
+          const loc = locations.find(l => l.id === id);
+          return loc ? loc.name : `Location ${id}`;
+        };
+
+        return (
+          <div className="app">
+            <header className="header">
+              <h1>🗺️ Urban Route Optimizer</h1>
+              <span className="badge">Erbil, Iraq</span>
+            </header>
+            <div className="main">
+              <div className="sidebar">
+                <div className="tab-nav">
+                  <button className={activeTab === 'route' ? 'active' : ''} onClick={() => setActiveTab('route')}>Route</button>
+                  <button className={activeTab === 'feedback' ? 'active' : ''} onClick={() => setActiveTab('feedback')}>Feedback</button>
+                  <button className={activeTab === 'admin' ? 'active' : ''} onClick={() => setActiveTab('admin')}>Admin</button>
+                </div>
+
+                {activeTab === 'route' && (
+                  <div className="sidebar-section">
+                    <h3>Generate AI Route</h3>
+                    <div className="form-group">
+                      <label>Start Location</label>
+                      <select value={startLoc} onChange={e => setStartLoc(e.target.value)}>
+                        <option value="">Select start</option>
+                        {locations.map(loc => (
+                          <option key={loc.id} value={loc.id}>{loc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>End Location</label>
+                      <select value={endLoc} onChange={e => setEndLoc(e.target.value)}>
+                        <option value="">Select end</option>
+                        {locations.map(loc => (
+                          <option key={loc.id} value={loc.id}>{loc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button className="btn" onClick={generateRoute}>Generate Route</button>
+                    
+                    {aiRoute && (
+                      <div className="route-info">
+                        <div className="row"><span>Distance:</span><strong>{aiRoute.total_distance_km} km</strong></div>
+                        <div className="row"><span>Est. Time:</span><strong>{aiRoute.estimated_time_minutes} min</strong></div>
+                        <div className="row"><span>Nodes:</span><strong>{aiRoute.path.length}</strong></div>
+                        <div className="row"><span>Type:</span><strong>{aiRoute.route_type}</strong></div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'feedback' && (
+                  <div className="sidebar-section">
+                    <h3>Submit Rider Feedback</h3>
+                    <div className="feedback-form">
+                      <input 
+                        placeholder="Rider ID (e.g., RIDER_001)" 
+                        value={feedback.riderId}
+                        onChange={e => setFeedback({...feedback, riderId: e.target.value})}
+                      />
+                      <input 
+                        placeholder="Actual Path (node IDs comma-separated)" 
+                        value={feedback.actualPath}
+                        onChange={e => setFeedback({...feedback, actualPath: e.target.value})}
+                      />
+                      <input 
+                        placeholder="Actual Time (minutes)" 
+                        type="number"
+                        value={feedback.actualTime}
+                        onChange={e => setFeedback({...feedback, actualTime: e.target.value})}
+                      />
+                      <textarea 
+                        placeholder="Issues (comma-separated)" 
+                        value={feedback.issues}
+                        onChange={e => setFeedback({...feedback, issues: e.target.value})}
+                      />
+                      <button className="btn" onClick={submitFeedback}>Submit Feedback</button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'admin' && (
+                  <div className="sidebar-section">
+                    <h3>Road Conditions</h3>
+                    <div className="road-list">
+                      {roads.map(road => (
+                        <div key={road.id} className="road-item">
+                          <div>
+                            <span className={`status ${road.road_status}`}></span>
+                            <span style={{marginLeft: '8px'}}>
+                              {getLocationName(road.source_id)} → {getLocationName(road.target_id)}
+                            </span>
+                          </div>
+                          <select 
+                            value={road.road_status}
+                            onChange={e => updateRoadStatus(road.id, e.target.value)}
+                            style={{width: '100px', padding: '4px'}}
+                          >
+                            <option value="open">Open</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="risky">Risky</option>
+                            <option value="flooded">Flooded</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="sidebar-section">
+                  <h3>Analytics</h3>
+                  <div className="stats-grid">
+                    <div className="stat-card">
+                      <div className="value">{analytics?.total_deliveries || 0}</div>
+                      <div className="label">Total Deliveries</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{analytics?.routes_overridden || 0}</div>
+                      <div className="label">Routes Overridden</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{analytics?.ai_avg_time || 0}</div>
+                      <div className="label">AI Avg Time</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="value">{analytics?.actual_avg_time || 0}</div>
+                      <div className="label">Actual Avg Time</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="map-container">
+                <div id="map" ref={mapRef}></div>
+                <div className="legend">
+                  <div className="legend-item"><span style={{width: 12, height: 12, background: '#22c55e', borderRadius: '50%'}}></span> Open</div>
+                  <div className="legend-item"><span style={{width: 12, height: 12, background: '#f59e0b', borderRadius: '50%'}}></span> Risky</div>
+                  <div className="legend-item"><span style={{width: 12, height: 12, background: '#ef4444', borderRadius: '50%'}}></span> Blocked</div>
+                  <div className="legend-item"><span style={{width: 12, height: 12, background: '#3b82f6', borderRadius: '50%'}}></span> Flooded</div>
+                  <div className="legend-item"><span style={{width: 24, height: 4, background: '#e94560'}}></span> AI Route</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
