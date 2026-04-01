@@ -1,66 +1,75 @@
-# Quick Deployment Guide
+# Deployment Instructions
 
-## Option 1: Render (Backend + PostgreSQL - Free)
+## 🚀 Quick Deploy (5 minutes)
 
-```bash
-# 1. Push code to GitHub (already done)
-# 2. Go to https://render.com
-# 3. Create new Web Service
-# 4. Connect your GitHub repository
-# 5. Settings:
-#    - Build Command: pip install -r backend/requirements.txt
-#    - Start Command: uvicorn backend.main:app --host 0.0.0.0 --port 10000
-# 6. Add Environment Variables:
-#    - DATABASE_URL: postgresql://... (create via Render)
-#    - MAPBOX_API_KEY: your-key
-```
+### Backend - Render (Free Tier)
+1. Go to **https://render.com** → Sign up with GitHub
+2. Create New → **Web Service**
+3. Connect repository: `logeshkannan19/Adaptive-route-intelligence`
+4. Settings:
+   - Build Command: `pip install -r backend/requirements.txt`
+   - Start Command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+5. Environment Variables:
+   ```
+   DATABASE_URL=sqlite:///./urban_routes.db
+   MAPBOX_API_KEY=
+   JWT_SECRET=your-secret-key-change-in-production
+   ```
+6. Deploy
 
-## Option 2: Railway (Full Stack)
+### Frontend - Vercel (Free Tier)
+1. Go to **https://vercel.com** → Sign up with GitHub
+2. Import repository: `logeshkannan19/Adaptive-route-intelligence`
+3. Settings:
+   - Framework Preset: `Other`
+   - Build Command: (leave empty)
+   - Output Directory: `frontend/public`
+4. Deploy
 
-```bash
-# 1. Go to https://railway.app
-# 2. Connect GitHub repository
-# 3. Add PostgreSQL plugin
-# 4. Deploy automatically
-```
-
-## Option 3: Fly.io (Docker)
-
-```bash
-# 1. Install flyctl
-# 2. fly launch
-# 3. fly deploy
-```
-
-## Option 4: Vercel (Frontend only)
-
-```bash
-# 1. Go to https://vercel.com
-# 2. Import GitHub repo
-# 3. Set output directory to frontend/public
-# 4. Deploy
-```
-
-## Recommended: Render Free Tier
-
-| Service | Free Tier |
-|----------|-----------|
-| Backend | 750 hours/month |
-| PostgreSQL | 1GB storage |
-| Bandwidth | 1GB/month |
-
-## Environment Variables to Set
-
-```
-DATABASE_URL=postgresql://user:pass@host:5432/db
-MAPBOX_API_KEY=your_mapbox_token
-JWT_SECRET=random_secret_key
-LOG_LEVEL=INFO
-```
-
-## After Deployment
-
-Update frontend API URL in `frontend/public/index.html`:
+### Update Frontend API URL
+After backend deploys, edit `frontend/public/index.html`:
 ```javascript
-const API_URL = 'https://your-backend.render.com/api/v1';
+const API_URL = 'https://your-backend.onrender.com/api/v1';
 ```
+Then redeploy frontend.
+
+---
+
+## 🔧 Alternative: Quick Test Deploy
+
+### Use ngrok + Localhost
+```bash
+# 1. Start backend locally
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload
+
+# 2. Install ngrok
+ngrok http 8000
+
+# 3. Use the ngrok URL for frontend
+```
+
+### Use Replit (Instant)
+1. Go to **https://replit.com**
+2. Import GitHub repo
+3. Run backend in Shell: `uvicorn backend.main:app --host 0.0.0.0 --port 8000`
+4. Use the provided URL
+
+---
+
+## 📋 Post-Deploy Checklist
+
+- [ ] Backend running at `https://xxx.onrender.com`
+- [ ] Frontend running at `https://xxx.vercel.app`
+- [ ] API docs at `/docs`
+- [ ] Database initialized with `python scripts/init_data.py`
+- [ ] Mapbox API key added (optional - for real routing)
+
+## 🔗 Live Demo (After Deploy)
+
+| Service | URL |
+|---------|-----|
+| API Docs | `https://your-app.render.com/docs` |
+| Health | `https://your-app.render.com/api/v1/health` |
+| Frontend | `https://your-app.vercel.app` |
